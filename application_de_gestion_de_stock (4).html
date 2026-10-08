@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gestion de Stock - Camion & Box</title>
+    
+    <!-- Méta-balises spécifiques iOS / Safari PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Stock Camion">
+    <meta name="theme-color" content="#4338ca">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3063/3063822.png">
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- SheetJS (xlsx) CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+    <style>
+        .row-reorder {
+            background-color: #fef2f2 !important;
+            border-left: 4px solid #ef4444 !important;
+        }
+        .row-reorder:hover {
+            background-color: #ffe4e6 !important;
+        }
+        
+        @media screen and (max-width: 768px) {
+            input, select, textarea {
+                font-size: 16px !important;
+            }
+        }
+
+        body {
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        .pulse-online {
+            animation: pulse-green 2s infinite;
+        }
+        @keyframes pulse-green {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.1); opacity: 1; }
+            100% { transform: scale(0.95); opacity: 0.8; }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen select-none md:select-text">
+
+    <!-- En-tête principal -->
+    <header class="bg-indigo-700 text-white shadow-md sticky top-0 z-30 pt-2 pb-3 px-4">
+        <div class="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-3">
+            <div class="flex items-center gap-3">
+                <div class="p-2 bg-indigo-600 rounded-lg shrink-0">
+                    <i data-lucide="truck" class="w-6 h-6 text-indigo-100"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-lg font-bold tracking-wide leading-tight">Stock Camion & Box</h1>
+                        <!-- Badge Synchro -->
+                        <button onclick="openSyncModal()" id="syncBadgeBtn" class="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-200 border border-amber-400/30 hover:bg-amber-500/30 transition">
+                            <span id="syncPulseDot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+                            <span id="syncStatusText">Calcul...</span>
+                        </button>
+                    </div>
+                    <p class="text-[11px] text-indigo-200">Inventaire & Synchronisation PC ⇄ iPhone</p>
+                </div>
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-2">
+                <!-- Bouton Synchronisation Cloud -->
+                <button onclick="openSyncModal()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 border border-indigo-400/40 shadow-sm" title="Synchronisation PC & iPhone">
+                    <i data-lucide="cloud-lightning" class="w-4 h-4 text-sky-300"></i>
+                    <span class="hidden sm:inline">Synchro Cloud</span>
+                </button>
+
+                <!-- Bouton Tuto iPhone -->
+                <button onclick="openIphoneHelp()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 border border-indigo-400/30">
+                    <i data-lucide="smartphone" class="w-4 h-4 text-amber-300"></i>
+                    <span class="hidden sm:inline">Tuto iPhone</span>
+                </button>
+
+                <!-- Importation Excel -->
+                <label class="bg-indigo-600 hover:bg-indigo-500 text-white px-2.5 py-1.5 rounded-lg cursor-pointer text-xs font-medium transition flex items-center gap-1.5 shadow">
+                    <i data-lucide="upload" class="w-4 h-4"></i>
+                    <span class="hidden md:inline">Importer</span>
+                    <input type="file" id="importExcel" accept=".xlsx, .xls, .csv" class="hidden">
+                </label>
+                
+                <!-- Exportation Bon de Commande -->
+                <button onclick="exportReorderList()" class="bg-rose-600 hover:bg-rose-500 text-white px-2.5 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 shadow" title="Export Bon de Commande">
+                    <i data-lucide="shopping-cart" class="w-4 h-4"></i>
+                    <span class="hidden lg:inline">Bon Commande</span>
+                </button>
+
+                <!-- Exportation Globale -->
+                <button onclick="exportToExcel()" class="bg-emerald-600 hover:bg-emerald-500 text-white px-2.5 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-1.5 shadow">
+                    <i data-lucide="download" class="w-4 h-4"></i>
+                    <span class="hidden lg:inline">Exporter</span>
+                </button>
+
+                <!-- Réinitialiser -->
+                <button onclick="resetData()" class="bg-slate-600 hover:bg-slate-500 text-white p-1.5 rounded-lg transition" title="Réinitialiser">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-3 sm:px-4 py-4">
+
+        <!-- Cartes de Synthèse -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+            <div class="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex items-center gap-3">
+                <div class="p-2.5 bg-blue-100 text-blue-600 rounded-lg shrink-0">
+                    <i data-lucide="package" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <p class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Articles</p>
+                    <p id="statTotalItems" class="text-xl font-bold text-slate-800">0</p>
+                </div>
+            </div>
+
+            <div class="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex items-center gap-3">
+                <div class="p-2.5 bg-indigo-100 text-indigo-600 rounded-lg shrink-0">
+                    <i data-lucide="truck" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <p class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Camion</p>
+                    <p id="statTruckQty" class="text-xl font-bold text-indigo-600">0</p>
+                </div>
+            </div>
+
+            <div class="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex items-center gap-3">
+                <div class="p-2.5 bg-amber-100 text-amber-600 rounded-lg shrink-0">
+                    <i data-lucide="warehouse" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <p class="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Box</p>
+                    <p id="statBoxQty" class="text-xl font-bold text-amber-600">0</p>
+                </div>
+            </div>
+
+            <div class="bg-rose-50 p-3 rounded-xl shadow-sm border border-rose-200 flex items-center gap-3 cursor-pointer hover:bg-rose-100 transition" onclick="setFilter('reorder')">
+                <div class="p-2.5 bg-rose-500 text-white rounded-lg shadow shrink-0">
+                    <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <p class="text-[10px] font-bold text-rose-700 uppercase tracking-wider">A Commander</p>
+                    <p id="statReorderCount" class="text-xl font-bold text-rose-700">0</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Barre de recherche & Filtres -->
+        <div class="bg-white p-3 rounded-xl shadow-sm border border-slate-200 mb-4 flex flex-col md:flex-row gap-3 justify-between items-center">
+            
+            <!-- Recherche -->
+            <div class="relative w-full md:w-80">
+                <i data-lucide="search" class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                <input type="text" id="searchInput" placeholder="Rechercher article, S/N..." class="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm">
+            </div>
+
+            <!-- Filtres sous forme d'onglets défilants -->
+            <div class="flex gap-1.5 overflow-x-auto w-full md:w-auto pb-1 md:pb-0 scrollbar-none">
+                <button onclick="setFilter('all')" id="btnFilterAll" class="px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-indigo-600 text-white shadow">
+                    Tous
+                </button>
+                <button onclick="setFilter('reorder')" id="btnFilterReorder" class="px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-rose-100 text-rose-700 hover:bg-rose-200 border border-rose-300 flex items-center gap-1">
+                    <i data-lucide="alert-circle" class="w-3.5 h-3.5"></i>
+                    <span>À recommander</span>
+                    <span id="badgeReorderFilter" class="ml-1 bg-rose-600 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full">0</span>
+                </button>
+                <button onclick="setFilter('traceability')" id="btnFilterTraceability" class="px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-purple-100 text-purple-700 hover:bg-purple-200 border border-purple-300 flex items-center gap-1">
+                    <i data-lucide="shield-check" class="w-3.5 h-3.5 text-purple-600"></i>
+                    <span>Traçabilité</span>
+                    <span id="badgeTraceabilityFilter" class="ml-1 bg-purple-600 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full">0</span>
+                </button>
+                <button onclick="setFilter('truck')" id="btnFilterTruck" class="px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-slate-100 text-slate-600 hover:bg-slate-200">
+                    Camion
+                </button>
+                <button onclick="setFilter('box')" id="btnFilterBox" class="px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap bg-slate-100 text-slate-600 hover:bg-slate-200">
+                    Box
+                </button>
+            </div>
+
+            <!-- Bouton Ajouter Matériel -->
+            <button onclick="openModal()" class="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white px-4 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-2 shadow">
+                <i data-lucide="plus" class="w-4 h-4"></i>
+                <span>Nouveau Matériel</span>
+            </button>
+        </div>
+
+        <!-- Tableau des Matériels -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-slate-800 text-slate-200 uppercase text-[11px] tracking-wider">
+                        <tr>
+                            <th class="p-2.5 text-center w-12">Photo</th>
+                            <th class="p-2.5">Article / Réf</th>
+                            <th class="p-2.5">Désignation</th>
+                            <th class="p-2.5 text-center">Camion</th>
+                            <th class="p-2.5 text-center">Box</th>
+                            <th class="p-2.5 text-center">Min</th>
+                            <th class="p-2.5 text-center">Commande</th>
+                            <th class="p-2.5 text-center">Transfert</th>
+                            <th class="p-2.5 text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="inventoryTable" class="divide-y divide-slate-200 text-xs sm:text-sm">
+                        <!-- Généré dynamiquement -->
+                    </tbody>
+                </table>
+            </div>
+            
+            <div id="emptyMessage" class="hidden p-10 text-center text-slate-400">
+                <i data-lucide="inbox" class="w-10 h-10 mx-auto mb-2 stroke-1"></i>
+                <p class="text-sm font-medium text-slate-600">Aucun matériel dans cette liste.</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal de Synchronisation PC ⇄ iPhone -->
+    <div id="syncModal" class="fixed inset-0 bg-slate-900/75 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4" onclick="closeSyncModal()">
+        <div class="bg-white rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center border-b pb-3 border-slate-200">
+                <div class="flex items-center gap-2 text-indigo-700 font-bold text-base">
+                    <i data-lucide="cloud-lightning" class="w-5 h-5 text-indigo-600"></i>
+                    <span>Synchronisation PC ⇄ iPhone</span>
+                </div>
+                <button onclick="closeSyncModal()" class="text-slate-400 hover:text-slate-600 p-1">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3 text-xs text-slate-600">
+                <p class="text-slate-700 leading-relaxed">
+                    Entrez le <strong>même code de synchronisation</strong> sur votre ordinateur et sur votre iPhone. Vos modifications de stock seront instantanément synchronisées entre vos appareils !
+                </p>
+
+                <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-3">
+                    <label class="block text-[11px] font-bold text-slate-700 uppercase">Votre Code de Synchro</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="syncCodeInput" placeholder="ex: CAMION-DUBOIS" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 font-mono font-bold text-slate-800 uppercase text-center text-sm">
+                        <button onclick="applySyncCode()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 py-2 rounded-lg text-xs shrink-0 shadow">
+                            Appliquer
+                        </button>
+                    </div>
+                    <p class="text-[10px] text-slate-500 italic">Astuce : utilisez un code simple que vous retiendrez (ex: CAMION-1, MACONNERIE-76, etc.).</p>
+                </div>
+
+                <div class="p-3 bg-indigo-50 rounded-xl border border-indigo-200 space-y-2">
+                    <div class="flex justify-between items-center">
+                        <span class="font-bold text-indigo-900 text-[11px]">Statut Cloud :</span>
+                        <span id="syncModalStatus" class="font-semibold text-indigo-700">En cours...</span>
+                    </div>
+                    <p class="text-[10px] text-indigo-800">
+                        Si votre liste est déjà sur votre PC, cliquez sur le bouton ci-dessous pour l'envoyer vers votre iPhone :
+                    </p>
+                    <button onclick="uploadAllToCloud()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-1.5 shadow">
+                        <i data-lucide="cloud-upload" class="w-4 h-4"></i>
+                        <span>Envoyer tout mon stock vers le Cloud</span>
+                    </button>
+                </div>
+            </div>
+
+            <button onclick="closeSyncModal()" class="w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-xs">Fermer</button>
+        </div>
+    </div>
+
+    <!-- Modal Ajouter / Modifier -->
+    <div id="modal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center hidden p-0 sm:p-4">
+        <div class="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[92vh] flex flex-col">
+            <div class="px-5 py-3.5 bg-slate-800 text-white flex justify-between items-center shrink-0">
+                <h3 id="modalTitle" class="font-bold text-sm">Ajouter un matériel</h3>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-white p-1">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            
+            <form id="stockForm" onsubmit="saveItem(event)" class="p-5 space-y-3.5 overflow-y-auto">
+                <input type="hidden" id="itemId">
+                <input type="hidden" id="itemImageData">
+
+                <!-- Photo avec déclencheur de Caméra iPhone -->
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Photo du Matériel</label>
+                    <div class="flex items-center gap-3">
+                        <div id="photoPreviewContainer" class="w-16 h-16 bg-slate-100 border border-slate-300 rounded-lg flex items-center justify-center overflow-hidden shrink-0">
+                            <img id="photoPreview" class="w-full h-full object-cover hidden" alt="Aperçu">
+                            <i id="photoPlaceholderIcon" data-lucide="camera" class="w-6 h-6 text-slate-400"></i>
+                        </div>
+                        <div class="flex flex-col gap-1.5">
+                            <label class="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs px-3 py-2 rounded-lg cursor-pointer transition inline-flex items-center gap-1.5 font-semibold">
+                                <i data-lucide="camera" class="w-4 h-4"></i>
+                                <span>Prendre / Choisir Photo</span>
+                                <input type="file" id="itemPhotoInput" accept="image/*" capture="environment" class="hidden" onchange="handlePhotoUpload(event)">
+                            </label>
+                            <button type="button" id="btnRemovePhoto" onclick="removePhoto()" class="text-xs text-rose-600 hover:underline hidden text-left font-medium">
+                                Supprimer la photo
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Code Article</label>
+                        <input type="text" id="itemArticleCode" placeholder="ex: 154239" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Réf Fourn.</label>
+                        <input type="text" id="itemRefSupplier" placeholder="ex: 1511-96" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">N° Série (S/N)</label>
+                        <input type="text" id="itemSerial" placeholder="ex: SN-98765" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Désignation *</label>
+                    <input type="text" id="itemName" required placeholder="ex: Panneau Centrale Inversion" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm">
+                </div>
+
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Fournisseur</label>
+                        <input type="text" id="itemSupplier" placeholder="ex: JOCTEUR" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Utilisation</label>
+                        <input type="text" id="itemUsage" placeholder="ex: GIS Med" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm">
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2 bg-purple-50 p-2.5 rounded-lg border border-purple-200">
+                    <input type="checkbox" id="itemTraceability" class="w-4 h-4 text-purple-600 rounded border-slate-300 focus:ring-purple-500">
+                    <label for="itemTraceability" class="text-xs font-bold text-purple-900 cursor-pointer flex items-center gap-1.5 select-none">
+                        <i data-lucide="shield-check" class="w-4 h-4 text-purple-600"></i>
+                        <span>Article soumis à la traçabilité</span>
+                    </label>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                    <div>
+                        <label class="block text-[10px] font-bold text-indigo-700 uppercase mb-1">Qté Camion</label>
+                        <input type="number" id="itemTruck" min="0" value="0" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm font-bold text-indigo-600">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-amber-700 uppercase mb-1">Qté Box</label>
+                        <input type="number" id="itemBox" min="0" value="0" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm font-bold text-amber-600">
+                    </div>
+                    <div>
+                        <label class="block text-[10px] font-bold text-slate-700 uppercase mb-1">Seuil Min. *</label>
+                        <input type="number" id="itemMin" min="0" value="1" class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm font-bold">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Commentaires</label>
+                    <input type="text" id="itemComments" placeholder="Note ou remarque..." class="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none text-sm">
+                </div>
+
+                <div class="pt-3 flex gap-2 justify-end border-t border-slate-200">
+                    <button type="button" onclick="closeModal()" class="px-4 py-2 border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 text-xs font-semibold">Annuler</button>
+                    <button type="submit" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold shadow">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal Tutoriel Installation iPhone -->
+    <div id="iphoneModal" class="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4" onclick="closeIphoneHelp()">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl space-y-4" onclick="event.stopPropagation()">
+            <div class="flex justify-between items-center border-b pb-3 border-slate-200">
+                <div class="flex items-center gap-2 text-indigo-700 font-bold text-base">
+                    <i data-lucide="smartphone" class="w-5 h-5"></i>
+                    <span>Installer sur mon iPhone</span>
+                </div>
+                <button onclick="closeIphoneHelp()" class="text-slate-400 hover:text-slate-600">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3 text-xs text-slate-700">
+                <p class="font-medium text-slate-800">Transformez cette page en application sur l'écran d'accueil de votre iPhone :</p>
+                
+                <ol class="space-y-2.5 list-decimal list-inside font-normal">
+                    <li class="p-2 bg-slate-50 rounded-lg border border-slate-200">
+                        Ouvrez cette page dans <strong>Safari</strong> sur votre iPhone.
+                    </li>
+                    <li class="p-2 bg-slate-50 rounded-lg border border-slate-200">
+                        Touchez le bouton <strong>Partager</strong> <i data-lucide="share" class="w-4 h-4 inline text-blue-600"></i> en bas de votre écran Safari.
+                    </li>
+                    <li class="p-2 bg-slate-50 rounded-lg border border-slate-200">
+                        Faites défiler vers le bas et appuyez sur <strong>"Sur l'écran d'accueil"</strong> <i data-lucide="plus-square" class="w-4 h-4 inline text-slate-700"></i>.
+                    </li>
+                    <li class="p-2 bg-slate-50 rounded-lg border border-slate-200">
+                        Validez en cliquant sur <strong>"Ajouter"</strong> en haut à droite.
+                    </li>
+                </ol>
+
+                <div class="p-2.5 bg-emerald-50 text-emerald-800 rounded-lg border border-emerald-200 text-[11px] leading-relaxed">
+                    ✨ <strong>Résultat :</strong> L'icône apparaîtra sur l'écran de votre iPhone. L'application fonctionnera en plein écran et se synchronisera avec votre PC !
+                </div>
+            </div>
+
+            <button onclick="closeIphoneHelp()" class="w-full py-2 bg-indigo-600 text-white rounded-lg text-xs font-bold shadow">Compris !</button>
+        </div>
+    </div>
+
+    <!-- Modal Visualisation Image -->
+    <div id="imageLightbox" class="fixed inset-0 bg-black/85 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4" onclick="closeLightbox()">
+        <div class="relative max-w-lg max-h-[85vh] bg-transparent flex flex-col items-center">
+            <button onclick="closeLightbox()" class="absolute -top-9 right-0 text-white text-xs flex items-center gap-1 font-semibold">
+                <i data-lucide="x" class="w-5 h-5"></i>
+                <span>Fermer</span>
+            </button>
+            <img id="lightboxImage" class="max-w-full max-h-[75vh] rounded-lg shadow-2xl object-contain bg-slate-900 border border-slate-800" src="" alt="Photo">
+            <p id="lightboxCaption" class="text-white text-xs mt-3 text-center font-medium bg-black/60 px-3 py-1 rounded-full"></p>
+        </div>
+    </div>
+
+    <!-- Integration Firebase Module & App JS -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Données par défaut
+        const defaultInventory = [
+            { id: "101", article: "154239", ref_supplier: "Gaz med 06/04 Rev 0", serial: "", supplier: "ATELIER JOCTEUR", name: "Panneau Centrale Inversion Médical", usage: "GIS Med", min: 3, truck: 3, box: 0, image: "", comments: "", traceability: true },
+            { id: "102", article: "154240", ref_supplier: "LOX med 06/04 Rev 0", serial: "", supplier: "ATELIER JOCTEUR", name: "Panneau Installation Oxygène Médical Liquide", usage: "Bulk Med", min: 3, truck: 3, box: 0, image: "", comments: "", traceability: true },
+            { id: "103", article: "154241", ref_supplier: "1511-96", serial: "", supplier: "ATELIER JOCTEUR", name: "Panneau Centrale Inversion Industriel", usage: "Gis Indus", min: 3, truck: 0, box: 0, image: "", comments: "Exemple à recommander", traceability: false },
+            { id: "104", article: "154246", ref_supplier: "NPN", serial: "", supplier: "ATELIER JOCTEUR", name: "Autocollant \"Attention TanK HP Remplir à 80%\"", usage: "Bulk Indus", min: 1, truck: 0, box: 0, image: "", comments: "", traceability: false },
+            { id: "105", article: "154250", ref_supplier: "NPN", serial: "", supplier: "ATELIER JOCTEUR", name: "Autocollant \"SI LE PLOMBAGE DE LA VANNE…\"", usage: "Bulk med & indus", min: 3, truck: 3, box: 0, image: "", comments: "", traceability: false },
+            { id: "106", article: "409977", ref_supplier: "AUT. AP 500", serial: "", supplier: "ATELIER JOCTEUR", name: "RCCT Logo Air Products 500x125", usage: "RCCT", min: 2, truck: 0, box: 0, image: "", comments: "", traceability: false },
+            { id: "107", article: "6089928", ref_supplier: "", serial: "", supplier: "ATELIER JOCTEUR", name: "Autocollant \"Numéro d'urgence\" clients AP France", usage: "Général", min: 20, truck: 20, box: 5, image: "", comments: "", traceability: false },
+            { id: "108", article: "428089", ref_supplier: "CLP AR", serial: "", supplier: "ATELIER JOCTEUR", name: "Autocollant CPL \"Argon Liquide Réfrigéré\"", usage: "Bulk Indus", min: 2, truck: 2, box: 0, image: "", comments: "", traceability: false }
+        ];
+
+        let inventory = JSON.parse(localStorage.getItem('stock_camion_box_v3')) || defaultInventory;
+        let currentFilter = 'all';
+
+        // Firebase Cloud Sync Configuration
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'stock-camion-app';
+        let db = null;
+        let auth = null;
+        let authUser = null;
+        let unsubscribeSync = null;
+
+        let syncCode = localStorage.getItem('stock_sync_code') || 'CAMION-1';
+
+        // Initialisation de l'application et Firebase
+        window.addEventListener('DOMContentLoaded', async () => {
+            renderTable();
+            lucide.createIcons();
+
+            document.getElementById('searchInput').addEventListener('input', renderTable);
+            document.getElementById('importExcel').addEventListener('change', handleFileImport);
+            document.getElementById('syncCodeInput').value = syncCode;
+
+            await initFirebase();
+        });
+
+        // Config Firebase & Auth
+        async function initFirebase() {
+            if (typeof __firebase_config === 'undefined' || !__firebase_config) {
+                updateSyncStatus('offline', 'Mode Local (Pas de Cloud)');
+                return;
+            }
+
+            try {
+                const firebaseConfig = JSON.parse(__firebase_config);
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    const userCred = await signInWithCustomToken(auth, __initial_auth_token);
+                    authUser = userCred.user;
+                } else {
+                    const userCred = await signInAnonymously(auth);
+                    authUser = userCred.user;
+                }
+
+                updateSyncStatus('online', `Synchro : ${syncCode}`);
+                setupCloudSyncListener();
+
+            } catch (err) {
+                console.error("Erreur d'initialisation Firebase:", err);
+                updateSyncStatus('offline', 'Hors Ligne / Local');
+            }
+        }
+
+        function getSafeSyncCode() {
+            return (syncCode || 'CAMION-1').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '') || 'CAMION-1';
+        }
+
+        // Ecouteur temps réel Firestore pour synchroniser PC & iPhone
+        function setupCloudSyncListener() {
+            if (!db || !authUser) return;
+
+            if (unsubscribeSync) {
+                unsubscribeSync();
+                unsubscribeSync = null;
+            }
+
+            const safeCode = getSafeSyncCode();
+            const colRef = collection(db, 'artifacts', appId, 'public', 'data', `items_${safeCode}`);
+
+            unsubscribeSync = onSnapshot(colRef, (snapshot) => {
+                if (!snapshot.empty) {
+                    const cloudItems = [];
+                    snapshot.forEach(docSnap => {
+                        cloudItems.push(docSnap.data());
+                    });
+                    
+                    // Mettre à jour l'inventaire avec les données Cloud
+                    inventory = cloudItems;
+                    localStorage.setItem('stock_camion_box_v3', JSON.stringify(inventory));
+                    renderTable();
+                    updateSyncStatus('online', `Connecté (${safeCode})`);
+                } else {
+                    updateSyncStatus('online', `Espace (${safeCode}) prêt`);
+                }
+            }, (error) => {
+                console.error("Erreur lors de la synchronisation cloud:", error);
+                updateSyncStatus('error', 'Erreur de liaison Cloud');
+            });
+        }
+
+        function updateSyncStatus(status, label) {
+            const statusText = document.getElementById('syncStatusText');
+            const dot = document.getElementById('syncPulseDot');
+            const modalStatus = document.getElementById('syncModalStatus');
+
+            if (modalStatus) modalStatus.innerText = label;
+
+            if (status === 'online') {
+                statusText.innerText = label;
+                dot.className = "w-2 h-2 rounded-full bg-emerald-400 pulse-online";
+            } else if (status === 'syncing') {
+                statusText.innerText = "Synchronisation...";
+                dot.className = "w-2 h-2 rounded-full bg-amber-400 animate-ping";
+            } else {
+                statusText.innerText = label;
+                dot.className = "w-2 h-2 rounded-full bg-slate-400";
+            }
+        }
+
+        // Appliquer un nouveau code de synchronisation
+        window.applySyncCode = function() {
+            const inputVal = document.getElementById('syncCodeInput').value.trim();
+            if (!inputVal) return;
+
+            syncCode = inputVal.toUpperCase();
+            localStorage.setItem('stock_sync_code', syncCode);
+
+            if (db && authUser) {
+                setupCloudSyncListener();
+            }
+
+            closeSyncModal();
+            alert(`Code de synchronisation réglé sur : "${syncCode}". Entrez ce même code sur vos autres appareils !`);
+        };
+
+        // Téléverser les données actuelles vers le Cloud
+        window.uploadAllToCloud = async function() {
+            if (!db || !authUser) {
+                alert("La connexion Cloud n'est pas encore disponible.");
+                return;
+            }
+
+            updateSyncStatus('syncing', 'Envoi au cloud...');
+            const safeCode = getSafeSyncCode();
+
+            try {
+                for (const item of inventory) {
+                    const docRef = doc(db, 'artifacts', appId, 'public', 'data', `items_${safeCode}`, String(item.id));
+                    await setDoc(docRef, item);
+                }
+                updateSyncStatus('online', `Synchro : ${safeCode}`);
+                alert(`Succès ! Les ${inventory.length} articles ont été envoyés sur le Cloud (${safeCode}).`);
+            } catch (err) {
+                console.error("Erreur envoi cloud:", err);
+                alert("Erreur lors de l'envoi des données vers le cloud.");
+                updateSyncStatus('error', 'Erreur envoi');
+            }
+        };
+
+        // Sauvegarde de données locale + Cloud
+        async function saveItemCloud(item) {
+            if (!db || !authUser) return;
+            const safeCode = getSafeSyncCode();
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', `items_${safeCode}`, String(item.id));
+                await setDoc(docRef, item);
+            } catch (err) {
+                console.error("Erreur d'enregistrement cloud de l'item:", err);
+            }
+        }
+
+        async function deleteItemCloud(id) {
+            if (!db || !authUser) return;
+            const safeCode = getSafeSyncCode();
+            try {
+                const docRef = doc(db, 'artifacts', appId, 'public', 'data', `items_${safeCode}`, String(id));
+                await deleteDoc(docRef);
+            } catch (err) {
+                console.error("Erreur de suppression cloud de l'item:", err);
+            }
+        }
+
+        function getQtyToOrder(item) {
+            const totalStock = (parseInt(item.truck) || 0) + (parseInt(item.box) || 0);
+            const minReq = parseInt(item.min) || 0;
+            return Math.max(0, minReq - totalStock);
+        }
+
+        function needsReorder(item) {
+            return getQtyToOrder(item) > 0;
+        }
+
+        function updateStats() {
+            const totalItems = inventory.length;
+            let truckTotal = 0;
+            let boxTotal = 0;
+            let reorderCount = 0;
+            let traceabilityCount = 0;
+
+            inventory.forEach(item => {
+                truckTotal += parseInt(item.truck) || 0;
+                boxTotal += parseInt(item.box) || 0;
+                if (needsReorder(item)) reorderCount++;
+                if (item.traceability) traceabilityCount++;
+            });
+
+            document.getElementById('statTotalItems').innerText = totalItems;
+            document.getElementById('statTruckQty').innerText = truckTotal;
+            document.getElementById('statBoxQty').innerText = boxTotal;
+            document.getElementById('statReorderCount').innerText = reorderCount;
+            document.getElementById('badgeReorderFilter').innerText = reorderCount;
+            document.getElementById('badgeTraceabilityFilter').innerText = traceabilityCount;
+        }
+
+        window.setFilter = function(filter) {
+            currentFilter = filter;
+            renderTable();
+        };
+
+        window.updateQty = function(id, type, delta) {
+            const item = inventory.find(i => String(i.id) === String(id));
+            if (!item) return;
+            item[type] = Math.max(0, (parseInt(item[type]) || 0) + delta);
+            saveData();
+            saveItemCloud(item);
+            renderTable();
+        };
+
+        window.transfer = function(id, from, to) {
+            const item = inventory.find(i => String(i.id) === String(id));
+            if (!item) return;
+            const fromQty = parseInt(item[from]) || 0;
+            if (fromQty <= 0) return;
+            item[from] = fromQty - 1;
+            item[to] = (parseInt(item[to]) || 0) + 1;
+            saveData();
+            saveItemCloud(item);
+            renderTable();
+        };
+
+        function renderTable() {
+            const tbody = document.getElementById('inventoryTable');
+            const searchValue = document.getElementById('searchInput').value.toLowerCase().trim();
+            const emptyMsg = document.getElementById('emptyMessage');
+
+            tbody.innerHTML = '';
+
+            let filtered = inventory.filter(item => {
+                const matchSearch = !searchValue || 
+                    (item.name && item.name.toLowerCase().includes(searchValue)) ||
+                    (item.article && String(item.article).toLowerCase().includes(searchValue)) ||
+                    (item.serial && String(item.serial).toLowerCase().includes(searchValue)) ||
+                    (item.ref_supplier && item.ref_supplier.toLowerCase().includes(searchValue)) ||
+                    (item.supplier && item.supplier.toLowerCase().includes(searchValue)) ||
+                    (item.usage && item.usage.toLowerCase().includes(searchValue));
+
+                if (!matchSearch) return false;
+
+                if (currentFilter === 'reorder') return needsReorder(item);
+                if (currentFilter === 'traceability') return !!item.traceability;
+                if (currentFilter === 'truck') return (item.truck || 0) > 0;
+                if (currentFilter === 'box') return (item.box || 0) > 0;
+                return true;
+            });
+
+            if (filtered.length === 0) {
+                emptyMsg.classList.remove('hidden');
+            } else {
+                emptyMsg.classList.add('hidden');
+            }
+
+            filtered.forEach(item => {
+                const qtyToOrder = getQtyToOrder(item);
+                const isReorderNeeded = qtyToOrder > 0;
+
+                const tr = document.createElement('tr');
+                tr.className = `transition border-b border-slate-200 ${isReorderNeeded ? 'row-reorder font-medium' : 'hover:bg-slate-50'}`;
+
+                const photoCell = item.image ? 
+                    `<div class="w-9 h-9 rounded-lg overflow-hidden border border-slate-300 cursor-pointer shadow-sm mx-auto hover:scale-105 transition" onclick="openLightbox('${item.image}', '${escapeHtml(item.name)}')">
+                        <img src="${item.image}" class="w-full h-full object-cover" alt="${escapeHtml(item.name)}">
+                    </div>` :
+                    `<div class="w-9 h-9 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center mx-auto text-slate-400">
+                        <i data-lucide="image" class="w-4 h-4"></i>
+                    </div>`;
+
+                tr.innerHTML = `
+                    <td class="p-2 text-center">
+                        ${photoCell}
+                    </td>
+                    <td class="p-2.5">
+                        <div class="font-bold text-slate-900">${escapeHtml(item.article || '-')}</div>
+                        ${item.ref_supplier ? `<div class="text-[11px] text-slate-500">Réf: ${escapeHtml(item.ref_supplier)}</div>` : ''}
+                    </td>
+                    <td class="p-2.5">
+                        <div class="font-semibold text-slate-800 leading-tight">${escapeHtml(item.name || 'Sans nom')}</div>
+                        <div class="flex flex-wrap gap-1 mt-1">
+                            ${item.serial ? `<span class="bg-indigo-50 text-indigo-700 border border-indigo-200 text-[9px] font-semibold px-1.5 py-0.2 rounded">S/N: ${escapeHtml(item.serial)}</span>` : ''}
+                            ${item.traceability ? `<span class="bg-purple-100 text-purple-700 border border-purple-200 text-[9px] font-semibold px-1.5 py-0.2 rounded flex items-center gap-0.5"><i data-lucide="shield-check" class="w-2.5 h-2.5 text-purple-600"></i> Traçabilité</span>` : ''}
+                            ${item.usage ? `<span class="bg-slate-200 text-slate-700 text-[9px] font-semibold px-1.5 py-0.2 rounded">${escapeHtml(item.usage)}</span>` : ''}
+                            ${isReorderNeeded ? `<span class="bg-rose-600 text-white text-[9px] font-bold px-1.5 py-0.2 rounded-full flex items-center gap-0.5 shadow-sm"><i data-lucide="alert-circle" class="w-2.5 h-2.5"></i> RECOMMANDER</span>` : ''}
+                        </div>
+                    </td>
+                    <td class="p-2 text-center">
+                        <div class="inline-flex items-center gap-1">
+                            <button onclick="updateQty('${item.id}', 'truck', -1)" class="w-6 h-6 border rounded bg-white font-bold text-slate-700 shadow-sm active:bg-slate-200">-</button>
+                            <span class="w-6 text-center font-bold ${item.truck === 0 ? 'text-slate-400' : 'text-indigo-600'}">${item.truck || 0}</span>
+                            <button onclick="updateQty('${item.id}', 'truck', 1)" class="w-6 h-6 border rounded bg-white font-bold text-slate-700 shadow-sm active:bg-slate-200">+</button>
+                        </div>
+                    </td>
+                    <td class="p-2 text-center">
+                        <div class="inline-flex items-center gap-1">
+                            <button onclick="updateQty('${item.id}', 'box', -1)" class="w-6 h-6 border rounded bg-white font-bold text-slate-700 shadow-sm active:bg-slate-200">-</button>
+                            <span class="w-6 text-center font-bold ${item.box === 0 ? 'text-slate-400' : 'text-amber-600'}">${item.box || 0}</span>
+                            <button onclick="updateQty('${item.id}', 'box', 1)" class="w-6 h-6 border rounded bg-white font-bold text-slate-700 shadow-sm active:bg-slate-200">+</button>
+                        </div>
+                    </td>
+                    <td class="p-2 text-center font-semibold text-slate-600">
+                        ${item.min || 0}
+                    </td>
+                    <td class="p-2 text-center">
+                        ${isReorderNeeded ? 
+                            `<span class="inline-block bg-rose-600 text-white font-extrabold px-2 py-0.5 rounded text-xs shadow">${qtyToOrder}</span>` : 
+                            `<span class="text-emerald-600 font-semibold text-xs"><i data-lucide="check" class="w-3.5 h-3.5 inline"></i> OK</span>`
+                        }
+                    </td>
+                    <td class="p-2 text-center">
+                        <div class="flex justify-center gap-1">
+                            <button onclick="transfer('${item.id}', 'box', 'truck')" class="text-[10px] bg-white hover:bg-indigo-50 px-1.5 py-1 rounded border border-slate-300 shadow-sm font-semibold" title="Du Box au Camion">
+                                Box <i data-lucide="arrow-right" class="w-2.5 h-2.5 inline"></i> Camion
+                            </button>
+                            <button onclick="transfer('${item.id}', 'truck', 'box')" class="text-[10px] bg-white hover:bg-amber-50 px-1.5 py-1 rounded border border-slate-300 shadow-sm font-semibold" title="Du Camion au Box">
+                                Camion <i data-lucide="arrow-right" class="w-2.5 h-2.5 inline"></i> Box
+                            </button>
+                        </div>
+                    </td>
+                    <td class="p-2 text-right">
+                        <div class="flex justify-end gap-1">
+                            <button onclick="editItem('${item.id}')" class="text-slate-400 hover:text-indigo-600 p-1 rounded" title="Modifier">
+                                <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+                            </button>
+                            <button onclick="deleteItem('${item.id}')" class="text-slate-400 hover:text-rose-600 p-1 rounded" title="Supprimer">
+                                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                            </button>
+                        </div>
+                    </td>
+                `;
+
+                tbody.appendChild(tr);
+            });
+
+            updateStats();
+            lucide.createIcons();
+        }
+
+        window.handlePhotoUpload = function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const img = new Image();
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 300;
+                    const MAX_HEIGHT = 300;
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        if (width > MAX_WIDTH) {
+                            height *= MAX_WIDTH / width;
+                            width = MAX_WIDTH;
+                        }
+                    } else {
+                        if (height > MAX_HEIGHT) {
+                            width *= MAX_HEIGHT / height;
+                            height = MAX_HEIGHT;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    const compressedBase64 = canvas.toDataURL('image/jpeg', 0.6);
+                    setModalPhotoPreview(compressedBase64);
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        };
+
+        function setModalPhotoPreview(base64Data) {
+            const preview = document.getElementById('photoPreview');
+            const icon = document.getElementById('photoPlaceholderIcon');
+            const btnRemove = document.getElementById('btnRemovePhoto');
+            const hiddenInput = document.getElementById('itemImageData');
+
+            hiddenInput.value = base64Data || '';
+
+            if (base64Data) {
+                preview.src = base64Data;
+                preview.classList.remove('hidden');
+                icon.classList.add('hidden');
+                btnRemove.classList.remove('hidden');
+            } else {
+                preview.src = '';
+                preview.classList.add('hidden');
+                icon.classList.remove('hidden');
+                btnRemove.classList.add('hidden');
+            }
+        }
+
+        window.removePhoto = function() {
+            document.getElementById('itemPhotoInput').value = '';
+            setModalPhotoPreview('');
+        };
+
+        window.openLightbox = function(imageSrc, caption) {
+            document.getElementById('lightboxImage').src = imageSrc;
+            document.getElementById('lightboxCaption').innerText = caption;
+            document.getElementById('imageLightbox').classList.remove('hidden');
+        };
+
+        window.closeLightbox = function() {
+            document.getElementById('imageLightbox').classList.add('hidden');
+        };
+
+        window.openIphoneHelp = function() {
+            document.getElementById('iphoneModal').classList.remove('hidden');
+        };
+
+        window.closeIphoneHelp = function() {
+            document.getElementById('iphoneModal').classList.add('hidden');
+        };
+
+        window.openSyncModal = function() {
+            document.getElementById('syncModal').classList.remove('hidden');
+        };
+
+        window.closeSyncModal = function() {
+            document.getElementById('syncModal').classList.add('hidden');
+        };
+
+        window.openModal = function(item = null) {
+            const modal = document.getElementById('modal');
+            const title = document.getElementById('modalTitle');
+            const form = document.getElementById('stockForm');
+
+            if (item) {
+                title.innerText = 'Modifier le matériel';
+                document.getElementById('itemId').value = item.id;
+                document.getElementById('itemArticleCode').value = item.article || '';
+                document.getElementById('itemRefSupplier').value = item.ref_supplier || '';
+                document.getElementById('itemSerial').value = item.serial || '';
+                document.getElementById('itemName').value = item.name || '';
+                document.getElementById('itemSupplier').value = item.supplier || '';
+                document.getElementById('itemUsage').value = item.usage || '';
+                document.getElementById('itemTruck').value = item.truck || 0;
+                document.getElementById('itemBox').value = item.box || 0;
+                document.getElementById('itemMin').value = item.min || 0;
+                document.getElementById('itemComments').value = item.comments || '';
+                document.getElementById('itemTraceability').checked = !!item.traceability;
+                setModalPhotoPreview(item.image || '');
+            } else {
+                title.innerText = 'Ajouter un matériel';
+                form.reset();
+                document.getElementById('itemId').value = '';
+                document.getElementById('itemTraceability').checked = false;
+                setModalPhotoPreview('');
+            }
+
+            modal.classList.remove('hidden');
+        };
+
+        window.closeModal = function() {
+            document.getElementById('modal').classList.add('hidden');
+        };
+
+        window.saveItem = function(e) {
+            e.preventDefault();
+            const id = document.getElementById('itemId').value;
+            
+            const newItemData = {
+                id: id ? String(id) : String(Date.now()),
+                article: document.getElementById('itemArticleCode').value.trim(),
+                ref_supplier: document.getElementById('itemRefSupplier').value.trim(),
+                serial: document.getElementById('itemSerial').value.trim(),
+                name: document.getElementById('itemName').value.trim(),
+                supplier: document.getElementById('itemSupplier').value.trim(),
+                usage: document.getElementById('itemUsage').value.trim(),
+                truck: parseInt(document.getElementById('itemTruck').value) || 0,
+                box: parseInt(document.getElementById('itemBox').value) || 0,
+                min: parseInt(document.getElementById('itemMin').value) || 0,
+                image: document.getElementById('itemImageData').value || '',
+                traceability: document.getElementById('itemTraceability').checked,
+                comments: document.getElementById('itemComments').value.trim()
+            };
+
+            if (id) {
+                const item = inventory.find(i => String(i.id) === String(id));
+                if (item) Object.assign(item, newItemData);
+            } else {
+                inventory.unshift(newItemData);
+            }
+
+            saveData();
+            saveItemCloud(newItemData);
+            closeModal();
+            renderTable();
+        };
+
+        window.editItem = function(id) {
+            const item = inventory.find(i => String(i.id) === String(id));
+            if (item) openModal(item);
+        };
+
+        window.deleteItem = function(id) {
+            if (confirm('Supprimer cet article ?')) {
+                inventory = inventory.filter(i => String(i.id) !== String(id));
+                saveData();
+                deleteItemCloud(id);
+                renderTable();
+            }
+        };
+
+        function handleFileImport(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                try {
+                    const data = new Uint8Array(evt.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    
+                    const sheetName = workbook.SheetNames.includes("Magasin") ? "Magasin" : workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[sheetName];
+                    const rawData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+                    if (rawData.length > 0) {
+                        inventory = rawData.map((row, idx) => {
+                            const getVal = (possibleKeys) => {
+                                const foundKey = Object.keys(row).find(k => 
+                                    possibleKeys.some(pk => k.toLowerCase().trim().includes(pk.toLowerCase()))
+                                );
+                                return foundKey ? row[foundKey] : "";
+                            };
+
+                            const article = getVal(['code article', 'article', 'code', 'ref']);
+                            const ref_supplier = getVal(['références fournisseur', 'réf fournisseur', 'ref supplier', 'ref. fourn']);
+                            const serial = getVal(['numéro de série', 'n° de série', 'serial', 's/n', 'sn']);
+                            const supplier = getVal(['fournisseur', 'supplier', 'marque']);
+                            const name = getVal(['désignation', 'designation', 'nom', 'description', 'libellé']) || "Article sans nom";
+                            const usage = getVal(['utilisation', 'usage', 'destination', 'affectation']);
+                            const comments = getVal(['commentaires', 'remarque', 'notes']);
+                            
+                            const minVal = getVal(['quantités minimum', 'quantité min', 'min', 'seuil']);
+                            const min = parseInt(minVal) || 0;
+
+                            const truckVal = getVal(['inventaire fourgon', 'fourgon', 'camion', 'stock camion']);
+                            const truck = parseInt(truckVal) || 0;
+
+                            const boxVal = getVal(['stock box', 'box', 'quantité box']);
+                            const box = parseInt(boxVal) || 0;
+
+                            const tracVal = String(getVal(['traçabilité', 'traceabilite', 'tracabilite'])).toLowerCase();
+                            const traceability = tracVal === 'oui' || tracVal === 'true' || tracVal === '1';
+
+                            return {
+                                id: String(Date.now() + idx),
+                                article: String(article).trim(),
+                                ref_supplier: String(ref_supplier).trim(),
+                                serial: String(serial).trim(),
+                                supplier: String(supplier).trim(),
+                                name: String(name).trim(),
+                                usage: String(usage).trim(),
+                                comments: String(comments).trim(),
+                                min: min,
+                                truck: truck,
+                                box: box,
+                                traceability: traceability
+                            };
+                        });
+
+                        saveData();
+                        uploadAllToCloud();
+                        renderTable();
+                        alert(`Succès : ${inventory.length} références importées !`);
+                    } else {
+                        alert("Le fichier semble vide ou non conforme.");
+                    }
+                } catch (err) {
+                    alert('Erreur lors de la lecture du fichier Excel.');
+                    console.error(err);
+                }
+            };
+            reader.readAsArrayBuffer(file);
+            e.target.value = '';
+        }
+
+        window.exportToExcel = function() {
+            const exportData = inventory.map(item => {
+                const qtyToOrder = getQtyToOrder(item);
+                return {
+                    "Article": item.article,
+                    "Réf Fournisseur": item.ref_supplier,
+                    "Numéro de Série": item.serial,
+                    "Fournisseur": item.supplier,
+                    "Désignation": item.name,
+                    "Utilisation": item.usage,
+                    "Traçabilité": item.traceability ? "Oui" : "Non",
+                    "Quantité Min Requise": item.min,
+                    "Stock Camion": item.truck,
+                    "Stock Box": item.box,
+                    "À Commander": qtyToOrder,
+                    "Statut": qtyToOrder > 0 ? "À RECOMMANDER" : "OK",
+                    "Commentaires": item.comments
+                };
+            });
+
+            const worksheet = XLSX.utils.json_to_sheet(exportData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Stock Camion Box");
+            XLSX.writeFile(workbook, "Stock_Fourgon_Et_Box.xlsx");
+        };
+
+        window.exportReorderList = function() {
+            const reorderItems = inventory.filter(needsReorder);
+
+            if (reorderItems.length === 0) {
+                alert("Aucun article n'a besoin d'être recommandé !");
+                return;
+            }
+
+            const exportData = reorderItems.map(item => {
+                return {
+                    "Article": item.article,
+                    "Réf Fournisseur": item.ref_supplier,
+                    "Numéro de Série": item.serial,
+                    "Fournisseur": item.supplier,
+                    "Désignation": item.name,
+                    "Utilisation": item.usage,
+                    "Traçabilité": item.traceability ? "Oui" : "Non",
+                    "Stock Total Actuel": (item.truck || 0) + (item.box || 0),
+                    "Seuil Min": item.min,
+                    "QUANTITÉ À COMMANDER": getQtyToOrder(item),
+                    "Commentaires": item.comments
+                };
+            });
+
+            const worksheet = XLSX.utils.json_to_sheet(exportData);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, "Bon de Commande");
+            XLSX.writeFile(workbook, `Bon_De_Commande_${new Date().toISOString().slice(0,10)}.xlsx`);
+        };
+
+        function saveData() {
+            localStorage.setItem('stock_camion_box_v3', JSON.stringify(inventory));
+        }
+
+        window.resetData = function() {
+            if (confirm("Réinitialiser toutes les données ?")) {
+                localStorage.removeItem('stock_camion_box_v3');
+                inventory = defaultInventory;
+                saveData();
+                uploadAllToCloud();
+                renderTable();
+            }
+        };
+
+        function escapeHtml(text) {
+            return String(text || '').replace(/[&<>"']/g, function(m) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
+            });
+        }
+    </script>
+</body>
+</html>
